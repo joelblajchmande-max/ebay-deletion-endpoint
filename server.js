@@ -13,6 +13,7 @@ const CONFIG = {
   // Sandbox (zum Testen)
   clientId: 'NaorBlaj-Norman-SBX-a283ca9d7-d158dfe0',
   clientSecret: 'SBX-283ca9d73c29-8c23-4d48-8f0d-6203',
+  ruName: 'Naor_Blajchman-NaorBlaj-Norman-ossrd',
   redirectUri: 'https://normans-ebay-deletion.onrender.com/callback',
   authUrl: 'https://auth.sandbox.ebay.com/oauth2/authorize',
   tokenUrl: 'https://api.sandbox.ebay.com/identity/v1/oauth2/token',
@@ -20,6 +21,7 @@ const CONFIG = {
   // Production (später einfach auskommentieren):
   // clientId: 'PRODUCTION_APP_ID',
   // clientSecret: 'PRODUCTION_CLIENT_SECRET',
+  // ruName: 'PRODUCTION_RUNAME',
   // redirectUri: 'https://normans-ebay-deletion.onrender.com/callback',
   // authUrl: 'https://auth.ebay.com/oauth2/authorize',
   // tokenUrl: 'https://api.ebay.com/identity/v1/oauth2/token',
@@ -101,6 +103,7 @@ app.get('/auth', (req, res) => {
     response_type: 'code',
     scope: SCOPES,
     state: state,
+    ruName: CONFIG.ruName,
   }).toString();
 
   console.log(`[OAuth] Weiterleitung zu eBay Login: ${authUrl}`);
