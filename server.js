@@ -212,6 +212,39 @@ app.get('/token', (req, res) => {
 });
 
 // ============================================================
+// /listings – Listings für Extension holen
+// ============================================================
+app.get('/listings', async (req, res) => {
+  if (!storedToken) {
+    return res.status(404).json({ error: 'Kein Token vorhanden. Bitte erst einloggen.' });
+  }
+  if (Date.now() > storedToken.expires_at) {
+    return res.status(401).json({ error: 'Token abgelaufen. Bitte neu einloggen.' });
+  }
+
+  try {
+    const response = await fetch('https://api.ebay.com/sell/inventory/v1/inventory_item?limit=1', {
+      headers: {
+        'Authorization': `Bearer ${storedToken.access_token}`,
+        'Content-Type': 'application/json',
+        'Accept-Language': 'de-DE',
+      }
+    });
+
+    const data = await response.json();
+    console.log('[Listings] eBay Response:', JSON.stringify(data));
+
+    // CORS Header damit Extension zugreifen kann
+    res.header('Access-Control-Allow-Origin', '*');
+    res.json(data);
+
+  } catch (err) {
+    console.error('[Listings] Fehler:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // /revoke – Token widerrufen und neu starten
 // ============================================================
 app.get('/revoke', (req, res) => {
