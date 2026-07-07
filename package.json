@@ -1,13 +1,14 @@
 {
-  "name": "ebay-deletion-endpoint",
-  "version": "1.0.0",
-  "description": "NormanShop eBay Marketplace Account Deletion Endpoint",
+  "name": "normanshop-ebay-oauth",
+  "version": "2.0.0",
+  "description": "NormanShop eBay OAuth + Deletion Endpoint",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2"
   },
   "engines": {
     "node": ">=18.0.0"
