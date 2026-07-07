@@ -12,7 +12,7 @@ const VERIFICATION_TOKEN = 'NormanShopDE-EbayDeletion-2024-SecureXYZ99';
 
 // Diese URL bekommst du NACH dem Render-Deploy – dann hier eintragen
 // Format: https://DEIN-APP-NAME.onrender.com/ebay-deletion
-const ENDPOINT_URL = process.env.ENDPOINT_URL || 'https://PLACEHOLDER.onrender.com/ebay-deletion';
+const ENDPOINT_URL = process.env.ENDPOINT_URL || 'https://normans-ebay-deletion.onrender.com/ebay-deletion';
 
 // ============================================================
 // GET – eBay verifiziert den Endpoint (Challenge-Response)
