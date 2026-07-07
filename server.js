@@ -39,9 +39,6 @@ const SCOPES = [
   'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
   'https://api.ebay.com/oauth/api_scope/sell.account',
   'https://api.ebay.com/oauth/api_scope/sell.account.readonly',
-  'https://api.ebay.com/oauth/api_scope/sell.finances',
-  'https://api.ebay.com/oauth/api_scope/sell.marketing',
-  'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly',
   'https://api.ebay.com/oauth/api_scope/sell.item',
   'https://api.ebay.com/oauth/api_scope/sell.item.draft',
 ].join(' ');
