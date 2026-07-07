@@ -9,22 +9,25 @@ app.use(express.urlencoded({ extended: true }));
 // ============================================================
 // KONFIGURATION
 // ============================================================
-const CONFIG = {
-  // Sandbox (zum Testen)
-  clientId: 'NaorBlaj-Norman-SBX-a283ca9d7-d158dfe0',
-  clientSecret: 'SBX-283ca9d73c29-8c23-4d48-8f0d-6203',
-  ruName: 'Naor_Blajchman-NaorBlaj-Norman-ossrd',
-  redirectUri: 'https://normans-ebay-deletion.onrender.com/callback',
-  authUrl: 'https://auth.sandbox.ebay.com/oauth2/authorize',
-  tokenUrl: 'https://api.sandbox.ebay.com/identity/v1/oauth2/token',
 
-  // Production (später einfach auskommentieren):
-  // clientId: 'PRODUCTION_APP_ID',
-  // clientSecret: 'PRODUCTION_CLIENT_SECRET',
-  // ruName: 'PRODUCTION_RUNAME',
-  // redirectUri: 'https://normans-ebay-deletion.onrender.com/callback',
-  // authUrl: 'https://auth.ebay.com/oauth2/authorize',
-  // tokenUrl: 'https://api.ebay.com/identity/v1/oauth2/token',
+// ⚠️ SANDBOX (Testumgebung) – auskommentieren wenn Production aktiv
+// const CONFIG = {
+//   clientId: 'NaorBlaj-Norman-SBX-a283ca9d7-d158dfe0',
+//   clientSecret: 'SBX-283ca9d73c29-8c23-4d48-8f0d-6203',
+//   ruName: 'Naor_Blajchman-NaorBlaj-Norman-ossrd',
+//   redirectUri: 'https://normans-ebay-deletion.onrender.com/callback',
+//   authUrl: 'https://auth.sandbox.ebay.com/oauth2/authorize',
+//   tokenUrl: 'https://api.sandbox.ebay.com/identity/v1/oauth2/token',
+// };
+
+// ✅ PRODUCTION (echter Shop) – deine Keys hier eintragen
+const CONFIG = {
+  clientId: process.env.EBAY_CLIENT_ID,
+  clientSecret: process.env.EBAY_CLIENT_SECRET,
+  ruName: 'Naor_Blajchman-NaorBlaj-Norman-gynkic',
+  redirectUri: 'https://normans-ebay-deletion.onrender.com/callback',
+  authUrl: 'https://auth.ebay.com/oauth2/authorize',
+  tokenUrl: 'https://api.ebay.com/identity/v1/oauth2/token',
 };
 
 // Alle Scopes die NormanShop braucht
@@ -43,11 +46,11 @@ const SCOPES = [
   'https://api.ebay.com/oauth/api_scope/sell.item.draft',
 ].join(' ');
 
-// Token temporär im Speicher (für Tests)
+// Token temporär im Speicher
 let storedToken = null;
 
 // ============================================================
-// STARTSEITE – Mit eBay verbinden Button
+// STARTSEITE
 // ============================================================
 app.get('/', (req, res) => {
   const tokenStatus = storedToken
@@ -106,23 +109,19 @@ app.get('/auth', (req, res) => {
     ruName: CONFIG.ruName,
   }).toString();
 
-  console.log(`[OAuth] Weiterleitung zu eBay Login: ${authUrl}`);
+  console.log(`[OAuth] Weiterleitung zu eBay Login`);
   res.redirect(authUrl);
 });
 
 // ============================================================
-// /callback – eBay leitet hier nach dem Login zurück
+// /callback – eBay leitet hier nach Login zurück
 // ============================================================
 app.get('/callback', async (req, res) => {
   const { code, error, error_description } = req.query;
 
   if (error) {
-    console.error(`[OAuth] Fehler: ${error} – ${error_description}`);
-    return res.send(`
-      <h2>❌ Fehler beim Login</h2>
-      <p>${error_description}</p>
-      <a href="/">Zurück</a>
-    `);
+    console.error(`[OAuth] Fehler: ${error}`);
+    return res.send(`<h2>❌ Fehler beim Login</h2><p>${error_description}</p><a href="/">Zurück</a>`);
   }
 
   if (!code) {
@@ -130,9 +129,6 @@ app.get('/callback', async (req, res) => {
   }
 
   try {
-    console.log(`[OAuth] Code erhalten, tausche gegen Token...`);
-
-    // Code gegen Token tauschen
     const credentials = Buffer.from(`${CONFIG.clientId}:${CONFIG.clientSecret}`).toString('base64');
     const tokenResponse = await fetch(CONFIG.tokenUrl, {
       method: 'POST',
@@ -153,7 +149,6 @@ app.get('/callback', async (req, res) => {
       throw new Error(`${tokenData.error}: ${tokenData.error_description}`);
     }
 
-    // Token speichern
     storedToken = {
       ...tokenData,
       timestamp: Date.now(),
@@ -175,7 +170,6 @@ app.get('/callback', async (req, res) => {
           .btn { display: inline-block; background: #28a745; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 20px; }
         </style>
         <script>
-          // Token an Extension weitergeben (falls Extension den Tab geöffnet hat)
           window.addEventListener('load', () => {
             const token = ${JSON.stringify(storedToken)};
             if (window.opener) {
@@ -188,7 +182,7 @@ app.get('/callback', async (req, res) => {
       <body>
         <div class="card">
           <h1>✅ Erfolgreich verbunden!</h1>
-          <p>eBay Token wurde erfolgreich erhalten und gespeichert.</p>
+          <p>eBay Token wurde erfolgreich erhalten.</p>
           <div class="token-box">
             <strong>Access Token:</strong><br>${storedToken.access_token}<br><br>
             <strong>Gültig für:</strong> ${Math.round(tokenData.expires_in / 3600)} Stunden
@@ -201,23 +195,19 @@ app.get('/callback', async (req, res) => {
 
   } catch (err) {
     console.error(`[OAuth] Token-Fehler:`, err.message);
-    res.send(`
-      <h2>❌ Token-Fehler</h2>
-      <p>${err.message}</p>
-      <a href="/">Zurück</a>
-    `);
+    res.send(`<h2>❌ Token-Fehler</h2><p>${err.message}</p><a href="/">Zurück</a>`);
   }
 });
 
 // ============================================================
-// /token – Extension kann Token hier abholen (JSON)
+// /token – Extension holt Token hier ab
 // ============================================================
 app.get('/token', (req, res) => {
   if (!storedToken) {
-    return res.status(404).json({ error: 'Kein Token vorhanden. Bitte erst einloggen.' });
+    return res.status(404).json({ error: 'Kein Token vorhanden.' });
   }
   if (Date.now() > storedToken.expires_at) {
-    return res.status(401).json({ error: 'Token abgelaufen. Bitte neu einloggen.' });
+    return res.status(401).json({ error: 'Token abgelaufen.' });
   }
   res.json({
     access_token: storedToken.access_token,
@@ -227,7 +217,7 @@ app.get('/token', (req, res) => {
 });
 
 // ============================================================
-// eBay DELETION ENDPOINT (bereits vorhanden – unverändert)
+// eBay DELETION ENDPOINT
 // ============================================================
 const VERIFICATION_TOKEN = 'NormanShopDE-EbayDeletion-2024-SecureXYZ99';
 const ENDPOINT_URL = process.env.ENDPOINT_URL || 'https://normans-ebay-deletion.onrender.com/ebay-deletion';
@@ -242,7 +232,7 @@ app.get('/ebay-deletion', (req, res) => {
 });
 
 app.post('/ebay-deletion', (req, res) => {
-  console.log('[eBay] Account Deletion Notification:', JSON.stringify(req.body, null, 2));
+  console.log('[eBay] Deletion Notification:', JSON.stringify(req.body, null, 2));
   res.status(200).json({ status: 'received' });
 });
 
@@ -252,6 +242,4 @@ app.post('/ebay-deletion', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ NormanShop Server läuft auf Port ${PORT}`);
-  console.log(`🔗 OAuth Start: https://normans-ebay-deletion.onrender.com/auth`);
-  console.log(`📌 Callback:    https://normans-ebay-deletion.onrender.com/callback`);
 });
