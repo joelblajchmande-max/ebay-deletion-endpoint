@@ -79,6 +79,7 @@ app.get('/', (req, res) => {
         ${tokenStatus}
         <a href="/auth" class="btn">Mit eBay verbinden</a>
         ${storedToken ? `
+          <a href="/revoke" class="btn" style="background:#888;margin-left:12px;">🗑️ Token widerrufen</a>
           <div class="token-box">
             <strong>Access Token:</strong><br>${storedToken.access_token}<br><br>
             <strong>Gültig bis:</strong> ${new Date(storedToken.expires_at).toLocaleString('de-DE')}
@@ -101,8 +102,7 @@ app.get('/auth', (req, res) => {
     response_type: 'code',
     scope: SCOPES,
     state: state,
-    ruName: CONFIG.ruName,
-  }).toString();
+  }).toString() + `&redirect_uri=${encodeURIComponent(CONFIG.ruName)}`;
 
   console.log(`[OAuth] Weiterleitung zu eBay Login`);
   res.redirect(authUrl);
@@ -209,6 +209,15 @@ app.get('/token', (req, res) => {
     expires_at: storedToken.expires_at,
     valid: true,
   });
+});
+
+// ============================================================
+// /revoke – Token widerrufen und neu starten
+// ============================================================
+app.get('/revoke', (req, res) => {
+  storedToken = null;
+  console.log('[OAuth] Token widerrufen!');
+  res.redirect('/');
 });
 
 // ============================================================
