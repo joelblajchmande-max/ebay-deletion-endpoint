@@ -232,15 +232,19 @@ app.get('/listings', async (req, res) => {
       'Content-Type': 'application/json',
     };
 
-    // Nur PUBLISHED Offers holen (direkt gefiltert von eBay)
+    // Alle Offers holen (eBay hat keinen status-Filter in der API)
     const offerRes = await fetch(
-      `https://api.ebay.com/sell/inventory/v1/offer?limit=${requestedLimit}&filter=status%3DPUBLISHED`,
+      `https://api.ebay.com/sell/inventory/v1/offer?limit=200`,
       { headers }
     );
     const offerData = await offerRes.json();
-    console.log('[Listings] Published Offers:', offerData.total);
+    console.log('[Listings] Alle Offers:', offerData.total);
 
-    const offers = offerData.offers || [];
+    // Nur PUBLISHED filtern + Limit anwenden
+    const allOffers = offerData.offers || [];
+    const offers = allOffers
+      .filter(o => o.status === 'PUBLISHED')
+      .slice(0, requestedLimit);
 
     // Für jedes Offer das zugehörige Inventory Item holen (Name, Zustand etc.)
     const listingsWithItems = await Promise.all(offers.map(async ({ sku, ...offer }) => {
