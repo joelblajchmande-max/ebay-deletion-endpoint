@@ -1,10 +1,38 @@
 const express = require('express');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Token-Datei Pfad (überlebt Deploys NICHT, aber überlebt Restarts)
+const TOKEN_FILE = path.join('/tmp', 'ebay_token.json');
+
+function saveToken(token) {
+  try {
+    fs.writeFileSync(TOKEN_FILE, JSON.stringify(token));
+  } catch (e) {
+    console.warn('[Token] Konnte Token nicht speichern:', e.message);
+  }
+}
+
+function loadToken() {
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      const data = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
+      if (data && Date.now() < data.expires_at) {
+        console.log('[Token] Token aus Datei geladen, gültig bis', new Date(data.expires_at).toLocaleString('de-DE'));
+        return data;
+      }
+    }
+  } catch (e) {
+    console.warn('[Token] Konnte Token nicht laden:', e.message);
+  }
+  return null;
+}
 
 // ============================================================
 // KONFIGURATION
@@ -40,8 +68,8 @@ const SCOPES = [
   'https://api.ebay.com/oauth/api_scope/sell.account.readonly',
 ].join(' ');
 
-// Token temporär im Speicher
-let storedToken = null;
+// Token aus Datei laden (überlebt Server-Restarts)
+let storedToken = loadToken();
 
 // ============================================================
 // STARTSEITE
@@ -149,7 +177,8 @@ app.get('/callback', async (req, res) => {
       expires_at: Date.now() + (tokenData.expires_in * 1000),
     };
 
-    console.log(`[OAuth] ✅ Token erfolgreich erhalten!`);
+    saveToken(storedToken);
+    console.log(`[OAuth] ✅ Token erfolgreich erhalten und gespeichert!`);
 
     res.send(`
       <!DOCTYPE html>
@@ -356,6 +385,7 @@ app.get('/debug', async (req, res) => {
 // ============================================================
 app.get('/revoke', (req, res) => {
   storedToken = null;
+  try { fs.unlinkSync(TOKEN_FILE); } catch (e) {}
   console.log('[OAuth] Token widerrufen!');
   res.redirect('/');
 });
