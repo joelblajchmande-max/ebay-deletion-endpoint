@@ -278,6 +278,57 @@ app.get('/listings', async (req, res) => {
 });
 
 // ============================================================
+// /debug – Testet alle eBay APIs um zu sehen was Daten hat
+// ============================================================
+app.get('/debug', async (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+
+  if (!storedToken) {
+    return res.status(404).json({ error: 'Kein Token vorhanden.' });
+  }
+
+  const headers = {
+    'Authorization': `Bearer ${storedToken.access_token}`,
+    'Content-Type': 'application/json',
+  };
+
+  const results = {};
+
+  // 1. Inventory Items (alle Items im Lager)
+  try {
+    const r = await fetch('https://api.ebay.com/sell/inventory/v1/inventory_item?limit=5', { headers });
+    results.inventory_items = await r.json();
+  } catch (e) { results.inventory_items = { error: e.message }; }
+
+  // 2. Offers (alle Offers egal welcher Status)
+  try {
+    const r = await fetch('https://api.ebay.com/sell/inventory/v1/offer?limit=5', { headers });
+    results.offers = await r.json();
+  } catch (e) { results.offers = { error: e.message }; }
+
+  // 3. Active Listings via Trading API (klassische eBay Listings)
+  try {
+    const r = await fetch('https://api.ebay.com/ws/api.dll', {
+      method: 'POST',
+      headers: {
+        'X-EBAY-API-SITEID': '77',
+        'X-EBAY-API-COMPATIBILITY-LEVEL': '967',
+        'X-EBAY-API-CALL-NAME': 'GetMyeBaySelling',
+        'X-EBAY-API-IAF-TOKEN': storedToken.access_token,
+        'Content-Type': 'text/xml',
+      },
+      body: `<?xml version="1.0" encoding="utf-8"?>
+        <GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+          <ActiveList><Include>true</Include><Pagination><EntriesPerPage>5</EntriesPerPage></Pagination></ActiveList>
+        </GetMyeBaySellingRequest>`
+    });
+    results.trading_active = await r.text();
+  } catch (e) { results.trading_active = { error: e.message }; }
+
+  res.json(results);
+});
+
+// ============================================================
 // /revoke – Token widerrufen und neu starten
 // ============================================================
 app.get('/revoke', (req, res) => {
