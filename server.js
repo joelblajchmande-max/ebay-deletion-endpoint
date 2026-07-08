@@ -257,6 +257,7 @@ app.get('/listings', async (req, res) => {
   const page = parseInt(req.query.page) || 1;
 
   try {
+    // Kein OutputSelector – alle Felder holen damit nichts fehlt
     const xmlBody = `<?xml version="1.0" encoding="utf-8"?>
       <GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
         <ActiveList>
@@ -265,9 +266,7 @@ app.get('/listings', async (req, res) => {
             <EntriesPerPage>${limit}</EntriesPerPage>
             <PageNumber>${page}</PageNumber>
           </Pagination>
-          <Sort>TimeLeft</Sort>
         </ActiveList>
-        <OutputSelector>ItemID,Title,SKU,BuyItNowPrice,QuantityAvailable,TimeLeft,GalleryURL,ListingType,WatchCount</OutputSelector>
       </GetMyeBaySellingRequest>`;
 
     const tradingRes = await fetch('https://api.ebay.com/ws/api.dll', {
@@ -283,14 +282,21 @@ app.get('/listings', async (req, res) => {
     });
 
     const xmlText = await tradingRes.text();
+    console.log('[Listings] Trading API Antwort (erste 500 Zeichen):', xmlText.substring(0, 500));
 
-    // XML parsen – einfach mit Regex da kein XML-Parser installiert
+    // Prüfen ob Fehler in der Antwort
+    if (xmlText.includes('<Ack>Failure</Ack>')) {
+      const errMsg = xmlText.match(/<LongMessage>(.*?)<\/LongMessage>/)?.[1] || 'Unbekannter Fehler';
+      throw new Error(`eBay API Fehler: ${errMsg}`);
+    }
+
+    // XML parsen
     const getTag = (xml, tag) => {
       const m = xml.match(new RegExp(`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`));
       return m ? m[1].trim() : null;
     };
     const getAllTags = (xml, tag) => {
-      const regex = new RegExp(`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`, 'g');
+      const regex = new RegExp(`<${tag}(?:\s[^>]*)?>([\s\S]*?)<\/${tag}>`, 'g');
       const results = [];
       let m;
       while ((m = regex.exec(xml)) !== null) results.push(m[1].trim());
@@ -301,17 +307,23 @@ app.get('/listings', async (req, res) => {
     const totalPages = parseInt(getTag(xmlText, 'TotalNumberOfPages') || '1');
     const itemBlocks = getAllTags(xmlText, 'Item');
 
-    const listings = itemBlocks.map(item => ({
-      itemId: getTag(item, 'ItemID'),
-      title: getTag(item, 'Title'),
-      sku: getTag(item, 'SKU'),
-      price: getTag(item, 'BuyItNowPrice'),
-      quantity: getTag(item, 'QuantityAvailable'),
-      timeLeft: getTag(item, 'TimeLeft'),
-      imageUrl: getTag(item, 'GalleryURL'),
-      watchCount: getTag(item, 'WatchCount') || '0',
-      url: `https://www.ebay.de/itm/${getTag(item, 'ItemID')}`,
-    }));
+    console.log(`[Listings] ${itemBlocks.length} Item-Blöcke gefunden, total: ${totalEntries}`);
+
+    const listings = itemBlocks.map(item => {
+      const price = getTag(item, 'BuyItNowPrice') || getTag(item, 'CurrentPrice');
+      const imageUrl = getTag(item, 'GalleryURL') || getTag(item, 'PictureURL');
+      return {
+        itemId: getTag(item, 'ItemID'),
+        title: getTag(item, 'Title'),
+        sku: getTag(item, 'SKU'),
+        price,
+        quantity: getTag(item, 'QuantityAvailable'),
+        timeLeft: getTag(item, 'TimeLeft'),
+        imageUrl,
+        watchCount: getTag(item, 'WatchCount') || '0',
+        url: `https://www.ebay.de/itm/${getTag(item, 'ItemID')}`,
+      };
+    });
 
     console.log(`[Listings] Trading API: ${listings.length} von ${totalEntries} aktiven Listings (Seite ${page}/${totalPages})`);
 
