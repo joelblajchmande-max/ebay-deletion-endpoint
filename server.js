@@ -20,7 +20,7 @@ app.use(express.urlencoded({ extended: true }));
 //   tokenUrl: 'https://api.sandbox.ebay.com/identity/v1/oauth2/token',
 // };
 
-// ✅ PRODUCTION (echter Shop) – deine Keys hier eintragen
+// ✅ PRODUCTION (echter Shop)
 const CONFIG = {
   clientId: process.env.EBAY_CLIENT_ID,
   clientSecret: process.env.EBAY_CLIENT_SECRET,
@@ -30,7 +30,6 @@ const CONFIG = {
   tokenUrl: 'https://api.ebay.com/identity/v1/oauth2/token',
 };
 
-// Alle Scopes die NormanShop braucht
 const SCOPES = [
   'https://api.ebay.com/oauth/api_scope',
   'https://api.ebay.com/oauth/api_scope/sell.inventory',
@@ -212,9 +211,11 @@ app.get('/token', (req, res) => {
 });
 
 // ============================================================
-// /listings – Listings für Extension holen
+// /listings – ALLE Listings + Preis für Extension holen
 // ============================================================
 app.get('/listings', async (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+
   if (!storedToken) {
     return res.status(404).json({ error: 'Kein Token vorhanden. Bitte erst einloggen.' });
   }
@@ -223,20 +224,43 @@ app.get('/listings', async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://api.ebay.com/sell/inventory/v1/inventory_item?limit=1', {
-      headers: {
-        'Authorization': `Bearer ${storedToken.access_token}`,
-        'Content-Type': 'application/json',
-        'Accept-Language': 'de-DE',
+    const headers = {
+      'Authorization': `Bearer ${storedToken.access_token}`,
+      'Content-Type': 'application/json',
+    };
+
+    // FIX: limit=200 statt limit=1 → alle Listings holen
+    const itemRes = await fetch('https://api.ebay.com/sell/inventory/v1/inventory_item?limit=200', { headers });
+    const itemData = await itemRes.json();
+    console.log('[Listings] Item Count:', itemData.total);
+
+    const items = itemData.inventoryItems || [];
+
+    // Für jedes Item den Offer (Preis) holen
+    const itemsWithOffers = await Promise.all(items.map(async (item) => {
+      const sku = item.sku;
+      let offer = null;
+
+      if (sku) {
+        try {
+          const offerRes = await fetch(
+            `https://api.ebay.com/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&limit=1`,
+            { headers }
+          );
+          const offerData = await offerRes.json();
+          offer = offerData.offers?.[0] || null;
+        } catch (e) {
+          console.warn(`[Listings] Offer für SKU ${sku} fehlgeschlagen:`, e.message);
+        }
       }
+
+      return { item, offer };
+    }));
+
+    res.json({
+      total: itemData.total || items.length,
+      listings: itemsWithOffers,
     });
-
-    const data = await response.json();
-    console.log('[Listings] eBay Response:', JSON.stringify(data));
-
-    // CORS Header damit Extension zugreifen kann
-    res.header('Access-Control-Allow-Origin', '*');
-    res.json(data);
 
   } catch (err) {
     console.error('[Listings] Fehler:', err.message);
