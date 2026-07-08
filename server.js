@@ -211,7 +211,7 @@ app.get('/token', (req, res) => {
 });
 
 // ============================================================
-// /listings – ALLE Listings + Preis für Extension holen
+// /listings – Nur PUBLISHED Listings + Preis, mit wählbarem Limit
 // ============================================================
 app.get('/listings', async (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -223,43 +223,48 @@ app.get('/listings', async (req, res) => {
     return res.status(401).json({ error: 'Token abgelaufen. Bitte neu einloggen.' });
   }
 
+  // Limit aus Query-Parameter lesen (z.B. /listings?limit=100), max 200 pro API-Call
+  const requestedLimit = Math.min(parseInt(req.query.limit) || 200, 200);
+
   try {
     const headers = {
       'Authorization': `Bearer ${storedToken.access_token}`,
       'Content-Type': 'application/json',
     };
 
-    // FIX: limit=200 statt limit=1 → alle Listings holen
-    const itemRes = await fetch('https://api.ebay.com/sell/inventory/v1/inventory_item?limit=200', { headers });
-    const itemData = await itemRes.json();
-    console.log('[Listings] Item Count:', itemData.total);
+    // Nur PUBLISHED Offers holen (direkt gefiltert von eBay)
+    const offerRes = await fetch(
+      `https://api.ebay.com/sell/inventory/v1/offer?limit=${requestedLimit}&filter=status%3DPUBLISHED`,
+      { headers }
+    );
+    const offerData = await offerRes.json();
+    console.log('[Listings] Published Offers:', offerData.total);
 
-    const items = itemData.inventoryItems || [];
+    const offers = offerData.offers || [];
 
-    // Für jedes Item den Offer (Preis) holen
-    const itemsWithOffers = await Promise.all(items.map(async (item) => {
-      const sku = item.sku;
-      let offer = null;
+    // Für jedes Offer das zugehörige Inventory Item holen (Name, Zustand etc.)
+    const listingsWithItems = await Promise.all(offers.map(async ({ sku, ...offer }) => {
+      let item = null;
 
       if (sku) {
         try {
-          const offerRes = await fetch(
-            `https://api.ebay.com/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&limit=1`,
+          const itemRes = await fetch(
+            `https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
             { headers }
           );
-          const offerData = await offerRes.json();
-          offer = offerData.offers?.[0] || null;
+          item = await itemRes.json();
         } catch (e) {
-          console.warn(`[Listings] Offer für SKU ${sku} fehlgeschlagen:`, e.message);
+          console.warn(`[Listings] Item für SKU ${sku} fehlgeschlagen:`, e.message);
         }
       }
 
-      return { item, offer };
+      return { item, offer: { sku, ...offer } };
     }));
 
     res.json({
-      total: itemData.total || items.length,
-      listings: itemsWithOffers,
+      total: offerData.total || offers.length,
+      shown: offers.length,
+      listings: listingsWithItems,
     });
 
   } catch (err) {
