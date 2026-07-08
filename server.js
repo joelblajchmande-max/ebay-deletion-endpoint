@@ -211,7 +211,7 @@ app.get('/token', (req, res) => {
 });
 
 // ============================================================
-// /listings – Nur PUBLISHED Listings + Preis, mit wählbarem Limit
+// /listings – Aktive Listings via Trading API (funktioniert mit allen eBay Listings)
 // ============================================================
 app.get('/listings', async (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -223,52 +223,75 @@ app.get('/listings', async (req, res) => {
     return res.status(401).json({ error: 'Token abgelaufen. Bitte neu einloggen.' });
   }
 
-  // Limit aus Query-Parameter lesen (z.B. /listings?limit=100), max 200 pro API-Call
-  const requestedLimit = Math.min(parseInt(req.query.limit) || 200, 200);
+  // Limit und Seite aus Query-Parametern (z.B. /listings?limit=100&page=1)
+  const limit = Math.min(parseInt(req.query.limit) || 100, 200);
+  const page = parseInt(req.query.page) || 1;
 
   try {
-    const headers = {
-      'Authorization': `Bearer ${storedToken.access_token}`,
-      'Content-Type': 'application/json',
+    const xmlBody = `<?xml version="1.0" encoding="utf-8"?>
+      <GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+        <ActiveList>
+          <Include>true</Include>
+          <Pagination>
+            <EntriesPerPage>${limit}</EntriesPerPage>
+            <PageNumber>${page}</PageNumber>
+          </Pagination>
+          <Sort>TimeLeft</Sort>
+        </ActiveList>
+        <OutputSelector>ItemID,Title,SKU,BuyItNowPrice,QuantityAvailable,TimeLeft,GalleryURL,ListingType,WatchCount</OutputSelector>
+      </GetMyeBaySellingRequest>`;
+
+    const tradingRes = await fetch('https://api.ebay.com/ws/api.dll', {
+      method: 'POST',
+      headers: {
+        'X-EBAY-API-SITEID': '77',
+        'X-EBAY-API-COMPATIBILITY-LEVEL': '967',
+        'X-EBAY-API-CALL-NAME': 'GetMyeBaySelling',
+        'X-EBAY-API-IAF-TOKEN': storedToken.access_token,
+        'Content-Type': 'text/xml',
+      },
+      body: xmlBody,
+    });
+
+    const xmlText = await tradingRes.text();
+
+    // XML parsen – einfach mit Regex da kein XML-Parser installiert
+    const getTag = (xml, tag) => {
+      const m = xml.match(new RegExp(`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`));
+      return m ? m[1].trim() : null;
+    };
+    const getAllTags = (xml, tag) => {
+      const regex = new RegExp(`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`, 'g');
+      const results = [];
+      let m;
+      while ((m = regex.exec(xml)) !== null) results.push(m[1].trim());
+      return results;
     };
 
-    // Alle Offers holen (eBay hat keinen status-Filter in der API)
-    const offerRes = await fetch(
-      `https://api.ebay.com/sell/inventory/v1/offer?limit=200`,
-      { headers }
-    );
-    const offerData = await offerRes.json();
-    console.log('[Listings] Alle Offers:', offerData.total);
+    const totalEntries = parseInt(getTag(xmlText, 'TotalNumberOfEntries') || '0');
+    const totalPages = parseInt(getTag(xmlText, 'TotalNumberOfPages') || '1');
+    const itemBlocks = getAllTags(xmlText, 'Item');
 
-    // Nur PUBLISHED filtern + Limit anwenden
-    const allOffers = offerData.offers || [];
-    const offers = allOffers
-      .filter(o => o.status === 'PUBLISHED')
-      .slice(0, requestedLimit);
-
-    // Für jedes Offer das zugehörige Inventory Item holen (Name, Zustand etc.)
-    const listingsWithItems = await Promise.all(offers.map(async ({ sku, ...offer }) => {
-      let item = null;
-
-      if (sku) {
-        try {
-          const itemRes = await fetch(
-            `https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
-            { headers }
-          );
-          item = await itemRes.json();
-        } catch (e) {
-          console.warn(`[Listings] Item für SKU ${sku} fehlgeschlagen:`, e.message);
-        }
-      }
-
-      return { item, offer: { sku, ...offer } };
+    const listings = itemBlocks.map(item => ({
+      itemId: getTag(item, 'ItemID'),
+      title: getTag(item, 'Title'),
+      sku: getTag(item, 'SKU'),
+      price: getTag(item, 'BuyItNowPrice'),
+      quantity: getTag(item, 'QuantityAvailable'),
+      timeLeft: getTag(item, 'TimeLeft'),
+      imageUrl: getTag(item, 'GalleryURL'),
+      watchCount: getTag(item, 'WatchCount') || '0',
+      url: `https://www.ebay.de/itm/${getTag(item, 'ItemID')}`,
     }));
 
+    console.log(`[Listings] Trading API: ${listings.length} von ${totalEntries} aktiven Listings (Seite ${page}/${totalPages})`);
+
     res.json({
-      total: offerData.total || offers.length,
-      shown: offers.length,
-      listings: listingsWithItems,
+      total: totalEntries,
+      totalPages,
+      page,
+      shown: listings.length,
+      listings,
     });
 
   } catch (err) {
